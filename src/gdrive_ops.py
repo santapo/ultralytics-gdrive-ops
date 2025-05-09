@@ -41,3 +41,10 @@ def upload_file(local_path: str, gdrive_path: str):
     Upload a file to Google Drive.
     """
     rclone.copy(local_path, gdrive_path, ignore_existing=False)
+
+
+def sync_folder(source_path: str, target_path: str):
+    """
+    Sync a folder to Google Drive.
+    """
+    rclone.sync(source_path, target_path)
