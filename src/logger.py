@@ -17,7 +17,9 @@ class ColoredFormatter(logging.Formatter):
         log_message = super().format(record)
         level_name = record.levelname
         if level_name in self.COLORS:
-            return f"{self.COLORS[level_name]}{log_message}{self.COLORS['RESET']}"
+            # Only color the level name, not the entire message
+            colored_level = f"{self.COLORS[level_name]}{level_name}{self.COLORS['RESET']}"
+            return log_message.replace(level_name, colored_level, 1)
         return log_message
 
 
