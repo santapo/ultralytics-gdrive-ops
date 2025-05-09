@@ -1,5 +1,3 @@
-
-
 # Ultralytics Google Drive Training Manager
 
 This service automates the process of training Ultralytics YOLOv8 models using datasets stored in Google Drive. It continuously monitors a specified Google Drive folder for new datasets, downloads them, initiates training, and syncs the training results back to Google Drive.
@@ -39,6 +37,39 @@ Note that it runs solely on a single GPU instance and only triggers one training
    ```bash
    rclone config
    ```
+
+## Dataset Structure
+
+The training manager expects datasets in a specific structure:
+
+1. Create a ZIP file containing your dataset with the following structure:
+   ```
+   dataset_name/
+   ├── train/
+   │   ├── images/
+   │   │   ├── image1.jpg
+   │   │   ├── image2.jpg
+   │   │   └── ...
+   │   └── labels/
+   │       ├── image1.txt
+   │       ├── image2.txt
+   │       └── ...
+   └── val/
+       ├── images/
+       │   ├── image1.jpg
+       │   ├── image2.jpg
+       │   └── ...
+       └── labels/
+           ├── image1.txt
+           ├── image2.txt
+           └── ...
+   ```
+
+2. Ensure your label files follow the YOLOv8 format:
+   ```
+   class_id x_center y_center width height
+   ```
+   Where all values are normalized between 0 and 1.
 
 ## Usage
 
