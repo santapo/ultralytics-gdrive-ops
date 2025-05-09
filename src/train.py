@@ -52,7 +52,7 @@ class Trainer:
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 
-        train_results = model.train(
+        model.train(
             data=config_file,
             epochs=2,
             imgsz=1280,

@@ -3,7 +3,7 @@ import multiprocessing
 import os
 import time
 
-from src.gdrive_ops import check_for_new_files, download_file, upload_file
+from src.gdrive_ops import check_for_new_files, download_file, sync_folder, upload_file
 from src.logger import setup_logger
 from src.train import Trainer
 
@@ -65,26 +65,23 @@ class TrainManager:
             dataset_path = Trainer.prepare_dataset(local_new_dataset_path)
 
             # step 4 trigger the training process in a separate process
-            training_proc = self._trigger_training_process(dataset_path)
+            training_proc = self._trigger_training_process(run_name="test",
+                                                           dataset_path=dataset_path,
+                                                           model_log_path=self.local_model_logs_path)
 
             self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
 
             # step 5 sync the model logs
-            # self._sync_model_logs()
+            sync_folder(self.local_model_logs_path, self.gdrive_model_logs_path)
 
-    def _trigger_training_process(self, dataset_path: str):
+    def _trigger_training_process(self, run_name: str, dataset_path: str, model_log_path: str):
         """
         Trigger the training process in a separate process.
         """
         def train_process():
             try:
-                # trainer = Trainer(model_path="yolo11n.pt", data_path=dataset_path)
-                # trainer.train()
-                print("start training")
-                for i in range(20):
-                    print(f"training {i}...")
-                    time.sleep(1)
-                print("training completed")
+                trainer = Trainer(run_name=run_name, data_path=dataset_path, model_log_path=model_log_path)
+                trainer.train()
                 logger.info("Training completed successfully")
             except Exception as e:
                 import traceback
@@ -103,18 +100,6 @@ class TrainManager:
             logger.info(f"Training process is still running (PID: {training_proc.pid})")
             return True
         return False
-
-    def _sync_model_logs(self):
-        """
-        Sync the model logs to the Google Drive model logs path.
-        """
-        new_model_logs = check_for_new_files(self.local_model_logs_path, self.current_gdrive_model_logs)
-        if len(new_model_logs) == 0:
-            time.sleep(MONITORING_INTERVAL)
-            return
-
-        for model_log in new_model_logs:
-            upload_file(model_log, self.gdrive_model_logs_path)
 
 
 if __name__ == "__main__":
