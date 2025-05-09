@@ -1,7 +1,6 @@
-import argparse
-# import multiprocessing
-import subprocess
 import os
+import subprocess
+import threading
 import time
 
 from src.gdrive_ops import check_for_new_files, download_file, sync_folder
@@ -47,20 +46,28 @@ class TrainManager:
         """
         Start the monitoring process.
         """
-        logger.info("Starting TrainerManager...")
+        logger.info("Starting receiving new datasets from Google Drive...")
+        self._sync_model_logs_loop()
+
         while True:
             # step 1 check for new files in the dataset path
             new_dataset_files = check_for_new_files(self.gdrive_dataset_path, self.current_gdrive_dataset_paths)
+            self.current_gdrive_dataset_paths += new_dataset_files
             self.training_queue += new_dataset_files
 
             if len(self.training_queue) == 0 or self.is_training_process_alive:
+                if 'training_proc' in locals():
+                    self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
+                    if self.is_training_process_alive:
+                        logger.info(f"Training process is still running! Training queue: {self.training_queue}")
                 time.sleep(MONITORING_INTERVAL)
                 continue
 
             # step 2 if there are new files, download them
             new_dataset = self.training_queue.pop(0)
+            logger.info(f"Prepare training for {new_dataset}...")
             new_dataset_path = os.path.join(self.gdrive_dataset_path, new_dataset)
-            local_new_dataset_path = download_file(new_dataset_path, self.local_dataset_path)
+            local_new_dataset_path = download_file(new_dataset_path, self.local_dataset_path, show_progress=False)
 
             # step 3 prepare the dataset for training in the local dataset path
             dataset_path = Trainer.prepare_dataset(local_new_dataset_path)
@@ -74,9 +81,6 @@ class TrainManager:
             self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
             if not self.is_training_process_alive:
                 training_proc.terminate()
-
-            # step 5 sync the model logs
-            sync_folder(self.local_model_logs_path, self.gdrive_model_logs_path)
 
     def _trigger_training_process(self, run_name: str, dataset_path: str, model_log_path: str):
         """
@@ -109,8 +113,23 @@ class TrainManager:
             return True
         return False
 
+    def _sync_model_logs_loop(self):
+        def sync_task():
+            while True:
+                try:
+                    sync_folder(self.local_model_logs_path, self.gdrive_model_logs_path, show_progress=True)
+                except Exception as e:
+                    logger.error(f"Error during auto-sync: {e}")
+                time.sleep(60)
+
+        sync_thread = threading.Thread(target=sync_task, daemon=True)
+        sync_thread.start()
+        return sync_thread
+
 
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_dataset_path", type=str, required=True)
     parser.add_argument("--local_model_logs_path", type=str, required=True)

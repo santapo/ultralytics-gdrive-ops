@@ -29,11 +29,12 @@ def check_for_new_files(path: str, current_files: list[str], is_gdrive: bool = T
     return new_files
 
 
-def download_file(gdrive_path: str, local_path: str):
+def download_file(gdrive_path: str, local_path: str, show_progress: bool = False):
     """
     Download a file from Google Drive to the local directory.
     """
-    rclone.copy(gdrive_path, local_path, ignore_existing=False)
+    logger.info(f"Downloading {gdrive_path} to {local_path}...")
+    rclone.copy(gdrive_path, local_path, ignore_existing=False, show_progress=show_progress)
     logger.info(f"Downloaded {gdrive_path} to {local_path}")
 
     filename = os.path.basename(gdrive_path)
@@ -47,8 +48,9 @@ def upload_file(local_path: str, gdrive_path: str):
     rclone.copy(local_path, gdrive_path, ignore_existing=False)
 
 
-def sync_folder(source_path: str, target_path: str):
+def sync_folder(source_path: str, target_path: str, show_progress: bool = False):
     """
     Sync a folder to Google Drive.
     """
-    rclone.sync(source_path, target_path)
+    logger.info(f"Syncing {source_path} to {target_path}...")
+    rclone.sync(source_path, target_path, show_progress=show_progress)
