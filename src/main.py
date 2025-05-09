@@ -1,5 +1,6 @@
 import argparse
-import multiprocessing
+# import multiprocessing
+import subprocess
 import os
 import time
 
@@ -65,11 +66,14 @@ class TrainManager:
             dataset_path = Trainer.prepare_dataset(local_new_dataset_path)
 
             # step 4 trigger the training process in a separate process
-            training_proc = self._trigger_training_process(run_name="test",
+            dataset_name = os.path.basename(dataset_path)
+            training_proc = self._trigger_training_process(run_name=dataset_name,
                                                            dataset_path=dataset_path,
                                                            model_log_path=self.local_model_logs_path)
 
             self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
+            if not self.is_training_process_alive:
+                training_proc.terminate()
 
             # step 5 sync the model logs
             sync_folder(self.local_model_logs_path, self.gdrive_model_logs_path)
@@ -78,25 +82,29 @@ class TrainManager:
         """
         Trigger the training process in a separate process.
         """
-        def train_process():
-            try:
-                trainer = Trainer(run_name=run_name, data_path=dataset_path, model_log_path=model_log_path)
-                trainer.train()
-                logger.info("Training completed successfully")
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                logger.error(f"Training failed with error: {str(e)}")
+        # Create a command to run the training script
+        cmd = [
+            "python", "src/train.py",
+            "--run_name", run_name,
+            "--data_path", dataset_path,
+            "--model_log_path", model_log_path
+        ]
 
-        training_proc = multiprocessing.Process(target=train_process)
-        training_proc.start()
+        # Run the process in the background
+        training_proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        logger.info(f"Started training process with PID: {training_proc.pid}")
         return training_proc
 
-    def _check_for_alive_training_process_status(self, training_proc: multiprocessing.Process):
+    def _check_for_alive_training_process_status(self, training_proc: subprocess.Popen):
         """
         Check if the training process is still running.
         """
-        if training_proc.is_alive():
+        if training_proc.poll() is None:
             logger.info(f"Training process is still running (PID: {training_proc.pid})")
             return True
         return False

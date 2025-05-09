@@ -62,7 +62,7 @@ class Trainer:
             name=self.run_name,
             project=os.path.join(os.getcwd(), self.model_log_path),
             exist_ok=True,
-            save_period=1,
+            save_period=-1,
             fliplr=0.8,
             flipud=0.6,
             scale=0.1,
@@ -70,3 +70,16 @@ class Trainer:
         )
 
         model.export(format="onnx", imgsz=1280)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str, required=True)
+    parser.add_argument("--data_path", type=str, required=True)
+    parser.add_argument("--model_log_path", type=str, required=True)
+    args = parser.parse_args()
+
+    trainer = Trainer(args.run_name, args.data_path, args.model_log_path)
+    trainer.train()

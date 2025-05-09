@@ -34,6 +34,10 @@ def download_file(gdrive_path: str, local_path: str):
     Download a file from Google Drive to the local directory.
     """
     rclone.copy(gdrive_path, local_path, ignore_existing=False)
+    logger.info(f"Downloaded {gdrive_path} to {local_path}")
+
+    filename = os.path.basename(gdrive_path)
+    return os.path.join(local_path, filename)
 
 
 def upload_file(local_path: str, gdrive_path: str):
