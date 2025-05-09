@@ -56,7 +56,7 @@ class Trainer:
 
         model.train(
             data=config_file,
-            epochs=2,
+            epochs=200,
             imgsz=1280,
             batch=8,
             name=self.run_name,
