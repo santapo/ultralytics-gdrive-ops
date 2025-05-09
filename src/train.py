@@ -1,5 +1,6 @@
 import os
 
+import yaml
 from ultralytics import YOLO
 
 from src.logger import get_logger
@@ -9,10 +10,10 @@ logger = get_logger("ultralytics_gdrive_ops")
 
 
 class Trainer:
-    def __init__(self, run_name: str, model_path: str, data_path: str):
+    def __init__(self, run_name: str, data_path: str, model_log_path: str):
         self.run_name = run_name
-        self.model_path = model_path
         self.data_path = data_path
+        self.model_log_path = model_log_path
 
     @staticmethod
     def prepare_dataset(dataset_path: str) -> str | None:
@@ -38,18 +39,32 @@ class Trainer:
         """
         Train the model.
         """
-        model = YOLO("yolo11n.pt")
-        model.train(data="data.yaml", epochs=100)
+        model = YOLO("yolov8x.pt")
+
+        config_file = os.path.join(self.data_path, "data.yaml")
+
+        # replace the path in the config file with absolute path
+        with open(config_file, "r") as f:
+            data_yaml = yaml.safe_load(f)
+
+        data_yaml["path"] = os.path.join(os.getcwd(), self.data_path)
+
+        with open(config_file, "w") as f:
+            yaml.dump(data_yaml, f)
 
         train_results = model.train(
-            data="coco8.yaml",  # Path to dataset configuration file
-            epochs=100,  # Number of training epochs
-            imgsz=640,  # Image size for training
-            device="cpu",  # Device to run on (e.g., 'cpu', 0, [0,1,2,3])
+            data=config_file,
+            epochs=2,
+            imgsz=1280,
+            batch=8,
+            name=self.run_name,
+            project=os.path.join(os.getcwd(), self.model_log_path),
+            exist_ok=True,
+            save_period=1,
+            fliplr=0.8,
+            flipud=0.6,
+            scale=0.1,
+            patience=200
         )
 
-        metrics = model.val()
-
-        path = model.export(format="onnx")  # Returns the path to the exported model
-
-        ...
+        model.export(format="onnx", imgsz=1280)
