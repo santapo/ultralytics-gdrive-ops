@@ -12,8 +12,6 @@ def unzip_file(file_path: str, extract_dir: str):
             zip_ref.extractall(extract_dir)
     except Exception as e:
         logger.error(f"Error unzipping file {file_path}: {e}")
-        return None
-    return extract_dir
 
 
 def check_dataset_structure(dataset_path: str) -> bool:

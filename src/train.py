@@ -24,16 +24,15 @@ class Trainer:
             logger.error(f"Dataset path must end with .zip: {dataset_path}")
             return None
 
-        save_dir = os.path.splitext(dataset_path)[0]
-        unzip_dir = unzip_file(dataset_path, save_dir)
+        save_dir = os.path.dirname(dataset_path)
+        unzip_file(dataset_path, save_dir)
 
-        if unzip_dir is None:
+        dataset_path = os.path.splitext(dataset_path)[0]
+
+        if not check_dataset_structure(dataset_path):
             return None
 
-        if not check_dataset_structure(unzip_dir):
-            return None
-
-        return unzip_dir
+        return dataset_path
 
     def train(self):
         """
@@ -43,12 +42,15 @@ class Trainer:
 
         config_file = os.path.join(self.data_path, "data.yaml")
 
-        # replace the path in the config file with absolute path
-        with open(config_file, "r") as f:
-            data_yaml = yaml.safe_load(f)
-
-        data_yaml["path"] = os.path.join(os.getcwd(), self.data_path)
-
+        data_yaml = {
+            "path": os.path.join(os.getcwd(), self.data_path),
+            "train": "train/images",
+            "val": "val/images",
+            "names": {
+                0: "defect",
+                1: "good"
+            }
+        }
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 

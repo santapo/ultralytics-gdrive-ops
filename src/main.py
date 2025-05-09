@@ -3,7 +3,7 @@ import multiprocessing
 import os
 import time
 
-from src.gdrive_ops import check_for_new_files, download_file, sync_folder, upload_file
+from src.gdrive_ops import check_for_new_files, download_file, sync_folder
 from src.logger import setup_logger
 from src.train import Trainer
 
