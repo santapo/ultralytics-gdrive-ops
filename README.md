@@ -77,3 +77,10 @@ Run the training manager with the following command:
 ```
 bash run.sh
 ```
+
+To tracking trainings with Weight & Bias:
+```
+export WANDB_API_KEY=<your_wandb_api_key>
+
+yolo settings wandb=true # to ensure wandb is enabled
+```

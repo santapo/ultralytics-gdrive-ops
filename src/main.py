@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import threading
 import time
 
@@ -7,7 +8,7 @@ from src.gdrive_ops import check_for_new_files, download_file, sync_folder
 from src.logger import setup_logger
 from src.train import Trainer
 
-logger = setup_logger()
+logger = setup_logger("ultralytics_gdrive_ops")
 
 MONITORING_INTERVAL = 10
 
@@ -47,40 +48,76 @@ class TrainManager:
         Start the monitoring process.
         """
         logger.info("Starting receiving new datasets from Google Drive...")
-        self._sync_model_logs_loop()
+        sync_thread = self._sync_model_logs_loop()
+        training_proc = None
 
-        while True:
-            # step 1 check for new files in the dataset path
-            new_dataset_files = check_for_new_files(self.gdrive_dataset_path, self.current_gdrive_dataset_paths)
-            self.current_gdrive_dataset_paths += new_dataset_files
-            self.training_queue += new_dataset_files
+        try:
+            while True:
+                # Check for new datasets
+                self._check_and_update_datasets()
 
-            if len(self.training_queue) == 0 or self.is_training_process_alive:
-                if 'training_proc' in locals():
+                # Check training process status if it exists
+                if training_proc:
                     self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
                     if self.is_training_process_alive:
                         logger.info(f"Training process is still running! Training queue: {self.training_queue}")
-                time.sleep(MONITORING_INTERVAL)
-                continue
+                        time.sleep(MONITORING_INTERVAL)
+                        continue
+                    else:
+                        logger.info(f"Training process is not running! Training queue: {self.training_queue}")
+                        training_proc.terminate()
+                        training_proc = None
 
-            # step 2 if there are new files, download them
-            new_dataset = self.training_queue.pop(0)
-            logger.info(f"Prepare training for {new_dataset}...")
-            new_dataset_path = os.path.join(self.gdrive_dataset_path, new_dataset)
-            local_new_dataset_path = download_file(new_dataset_path, self.local_dataset_path, show_progress=False)
+                # Start new training if queue has items and no active process
+                if not self.training_queue:
+                    logger.info(f"No new datasets to train. Training queue: {self.training_queue}")
+                    time.sleep(MONITORING_INTERVAL)
+                    continue
 
-            # step 3 prepare the dataset for training in the local dataset path
-            dataset_path = Trainer.prepare_dataset(local_new_dataset_path)
+                # Process next dataset in queue
+                training_proc = self._process_next_dataset()
 
-            # step 4 trigger the training process in a separate process
-            dataset_name = os.path.basename(dataset_path)
-            training_proc = self._trigger_training_process(run_name=dataset_name,
-                                                           dataset_path=dataset_path,
-                                                           model_log_path=self.local_model_logs_path)
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt received. Exiting...")
+            self._cleanup(sync_thread, training_proc)
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Error during training: {e}")
+            self._cleanup(sync_thread, training_proc)
+            sys.exit(1)
 
-            self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
-            if not self.is_training_process_alive:
-                training_proc.terminate()
+    def _check_and_update_datasets(self):
+        """Check for new datasets and add them to the training queue."""
+        new_dataset_files = check_for_new_files(self.gdrive_dataset_path, self.current_gdrive_dataset_paths)
+        self.current_gdrive_dataset_paths += new_dataset_files
+        self.training_queue += new_dataset_files
+
+    def _process_next_dataset(self):
+        """Process the next dataset in the queue and start training."""
+        new_dataset = self.training_queue.pop(0)
+        logger.info(f"Prepare training for {new_dataset}...")
+
+        # Download the dataset
+        new_dataset_path = os.path.join(self.gdrive_dataset_path, new_dataset)
+        local_new_dataset_path = download_file(new_dataset_path, self.local_dataset_path, show_progress=False)
+
+        # Prepare the dataset for training
+        dataset_path = Trainer.prepare_dataset(local_new_dataset_path)
+
+        # Start the training process
+        dataset_name = os.path.basename(dataset_path)
+        return self._trigger_training_process(
+            run_name=dataset_name,
+            dataset_path=dataset_path,
+            model_log_path=self.local_model_logs_path
+        )
+
+    def _cleanup(self, sync_thread, training_proc):
+        """Clean up resources before exiting."""
+        if sync_thread:
+            sync_thread.join()
+        if training_proc:
+            training_proc.terminate()
 
     def _trigger_training_process(self, run_name: str, dataset_path: str, model_log_path: str):
         """
@@ -94,12 +131,18 @@ class TrainManager:
             "--model_log_path", model_log_path
         ]
 
+        # Set up environment variables for the subprocess
+        env = os.environ.copy()
+        if "WANDB_API_KEY" in os.environ:
+            env["WANDB_API_KEY"] = os.environ["WANDB_API_KEY"]
+
         # Run the process in the background
         training_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            env=env
         )
         logger.info(f"Started training process with PID: {training_proc.pid}")
         return training_proc

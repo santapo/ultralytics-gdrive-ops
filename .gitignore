@@ -175,3 +175,5 @@ cython_debug/
 
 logs/
 tmp/
+wandb/
+*.pt
