@@ -1,7 +1,12 @@
 import os
+from copy import deepcopy
+from datetime import datetime
 
+import torch
 import yaml
 from ultralytics import YOLO
+from ultralytics.yolo.utils import __version__
+from ultralytics.yolo.utils.torch_utils import de_parallel
 
 from src.logger import get_logger
 from src.utils import check_dataset_structure, unzip_file
@@ -41,19 +46,24 @@ class Trainer:
         model = YOLO("yolov8x.pt")
 
         config_file = os.path.join(self.data_path, "data.yaml")
-
-        data_yaml = {
-            "path": os.path.join(os.getcwd(), self.data_path),
-            "train": "train/images",
-            "val": "val/images",
-            "names": {
-                0: "defect",
-                1: "good"
+        if not os.path.exists(config_file):
+            data_yaml = {
+                "path": os.path.join(os.getcwd(), self.data_path),
+                "train": "train/images",
+                "val": "val/images",
+                "names": {
+                    0: "defect",
+                }
             }
-        }
+        else:
+            with open(config_file, "r") as f:
+                data_yaml = yaml.safe_load(f)
+            data_yaml["path"] = os.path.join(os.getcwd(), self.data_path)
+
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 
+        model.add_callback("on_fit_epoch_end", save_top10_models_callback)
         model.train(
             data=config_file,
             epochs=200,
@@ -70,6 +80,61 @@ class Trainer:
         )
 
         model.export(format="onnx", imgsz=1280)
+
+
+import heapq
+
+
+def save_top10_models_callback(trainer):
+    """
+    Callback to save top 10 models based on fitness score.
+    """
+    # Initialize top10 heap on first call
+    if not hasattr(trainer, "_top10_models"):
+        trainer._top10_models = []  # min-heap of (fitness, epoch, path)
+        trainer._top10_ckpt_paths = set()
+
+    # Prepare checkpoint
+    ckpt = {
+        'epoch': trainer.epoch,
+        'best_fitness': trainer.best_fitness,
+        'model': deepcopy(de_parallel(trainer.model)).half(),
+        'ema': deepcopy(trainer.ema.ema).half(),
+        'updates': trainer.ema.updates,
+        'optimizer': trainer.optimizer.state_dict(),
+        'train_args': vars(trainer.args),  # save as dict
+        'date': datetime.now().isoformat(),
+        'version': __version__
+    }
+
+    map_score = trainer.metrics["metrics/mAP50-95(B)"]
+    epoch = trainer.epoch
+    top10 = trainer._top10_models
+    ckpt_name = f"top10_epoch{epoch}_map5095_{map_score:.6f}.pt"
+    ckpt_path = trainer.wdir / ckpt_name
+
+    # If less than 10, just add
+    if len(top10) < 10:
+        heapq.heappush(top10, (map_score, epoch, str(ckpt_path)))
+        trainer._top10_ckpt_paths.add(str(ckpt_path))
+        torch.save(ckpt, ckpt_path)
+    else:
+        # If current score is better than the worst in top10, replace
+        if map_score > top10[0][0]:
+            # Remove the worst
+            _, _, worst_path = heapq.heappop(top10)
+            if worst_path in trainer._top10_ckpt_paths:
+                try:
+                    os.remove(worst_path)
+                except Exception:
+                    pass
+                trainer._top10_ckpt_paths.remove(worst_path)
+            # Add the new one
+            heapq.heappush(top10, (map_score, epoch, str(ckpt_path)))
+            trainer._top10_ckpt_paths.add(str(ckpt_path))
+            torch.save(ckpt, ckpt_path)
+
+    del ckpt
 
 
 if __name__ == "__main__":
