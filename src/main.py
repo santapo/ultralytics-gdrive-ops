@@ -49,41 +49,28 @@ class TrainManager:
         """
         logger.info("Starting receiving new datasets from Google Drive...")
         sync_thread = self._sync_model_logs_loop()
-        training_proc = None
 
         try:
             while True:
                 # Check for new datasets
                 self._check_and_update_datasets()
 
-                # Check training process status if it exists
-                if training_proc:
-                    self.is_training_process_alive = self._check_for_alive_training_process_status(training_proc)
-                    if self.is_training_process_alive:
-                        logger.info(f"Training process is still running! Training queue: {self.training_queue}")
-                        time.sleep(MONITORING_INTERVAL)
-                        continue
-                    else:
-                        logger.info(f"Training process is not running! Training queue: {self.training_queue}")
-                        training_proc.terminate()
-                        training_proc = None
-
-                # Start new training if queue has items and no active process
+                # Start new training if queue has items
                 if not self.training_queue:
                     logger.info(f"No new datasets to train. Training queue: {self.training_queue}")
                     time.sleep(MONITORING_INTERVAL)
                     continue
 
                 # Process next dataset in queue
-                training_proc = self._process_next_dataset()
+                self._process_next_dataset()
 
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt received. Exiting...")
-            self._cleanup(sync_thread, training_proc)
+            self._cleanup(sync_thread, None)
             sys.exit(0)
         except Exception as e:
             logger.error(f"Error during training: {e}")
-            self._cleanup(sync_thread, training_proc)
+            self._cleanup(sync_thread, None)
             sys.exit(1)
 
     def _check_and_update_datasets(self):
@@ -106,7 +93,7 @@ class TrainManager:
 
         # Start the training process
         dataset_name = os.path.basename(dataset_path)
-        return self._trigger_training_process(
+        self._trigger_training_process(
             run_name=dataset_name,
             dataset_path=dataset_path,
             model_log_path=self.local_model_logs_path
@@ -115,7 +102,7 @@ class TrainManager:
     def _cleanup(self, sync_thread, training_proc):
         """Clean up resources before exiting."""
         if sync_thread:
-            sync_thread.join()
+            sync_thread.join(timeout=2)
         if training_proc:
             training_proc.terminate()
 
@@ -131,21 +118,20 @@ class TrainManager:
             "--model_log_path", model_log_path
         ]
 
-        # Set up environment variables for the subprocess
         env = os.environ.copy()
         if "WANDB_API_KEY" in os.environ:
             env["WANDB_API_KEY"] = os.environ["WANDB_API_KEY"]
 
-        # Run the process in the background
-        training_proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env
-        )
-        logger.info(f"Started training process with PID: {training_proc.pid}")
-        return training_proc
+        try:
+            subprocess.run(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+        except Exception as e:
+            logger.error(f"Error during training: {e}")
 
     def _check_for_alive_training_process_status(self, training_proc: subprocess.Popen):
         """
@@ -165,7 +151,7 @@ class TrainManager:
                     logger.error(f"Error during auto-sync: {e}")
                 time.sleep(60)
 
-        sync_thread = threading.Thread(target=sync_task, daemon=True)
+        sync_thread = threading.Thread(target=sync_task, daemon=False)
         sync_thread.start()
         return sync_thread
 
