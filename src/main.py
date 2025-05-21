@@ -30,7 +30,7 @@ class TrainManager:
         self.gdrive_model_logs_path = gdrive_model_logs_path
 
         self.training_queue = []
-        self.is_training_process_alive = False
+        self.stop_sync_thread = False
 
         self._initialize()
 
@@ -99,9 +99,10 @@ class TrainManager:
             model_log_path=self.local_model_logs_path
         )
 
-    def _cleanup(self, sync_thread, training_proc):
+    def _cleanup(self, sync_thread: threading.Thread, training_proc: subprocess.Popen):
         """Clean up resources before exiting."""
         if sync_thread:
+            self.stop_sync_thread = True
             sync_thread.join(timeout=2)
         if training_proc:
             training_proc.terminate()
@@ -144,13 +145,19 @@ class TrainManager:
 
     def _sync_model_logs_loop(self):
         def sync_task():
-            while True:
+            while not self.stop_sync_thread:
                 try:
                     sync_folder(self.local_model_logs_path, self.gdrive_model_logs_path, show_progress=True)
                 except Exception as e:
                     logger.error(f"Error during auto-sync: {e}")
-                time.sleep(60)
 
+                # wait for 60 seconds, if the sync thread is stopped, break
+                for _ in range(1200):
+                    if self.stop_sync_thread:
+                        break
+                    time.sleep(1)
+
+        self.stop_sync_thread = False   # ensure that the sync thread is not stopped
         sync_thread = threading.Thread(target=sync_task, daemon=False)
         sync_thread.start()
         return sync_thread
