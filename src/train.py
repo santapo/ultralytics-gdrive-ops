@@ -66,8 +66,8 @@ class Trainer:
         model.add_callback("on_fit_epoch_end", save_top10_models_callback)
         model.train(
             data=config_file,
-            epochs=400,
-            imgsz=1280,
+            epochs=300,
+            imgsz=960,
             batch=8,
             name=self.run_name,
             project=os.path.join(os.getcwd(), self.model_log_path),
