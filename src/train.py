@@ -1,6 +1,7 @@
 import os
 from copy import deepcopy
 from datetime import datetime
+from functools import partial
 
 import torch
 import yaml
@@ -63,7 +64,8 @@ class Trainer:
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 
-        model.add_callback("on_fit_epoch_end", save_top10_models_callback)
+        save_top30_models_callback = partial(save_topk_models_callback, k=30)
+        model.add_callback("on_fit_epoch_end", save_top30_models_callback)
         model.train(
             data=config_file,
             epochs=300,
@@ -79,20 +81,24 @@ class Trainer:
             patience=200
         )
 
-        model.export(format="onnx", imgsz=1280)
+        model.export(format="onnx", imgsz=960)
 
 
 import heapq
 
 
-def save_top10_models_callback(trainer):
+def save_topk_models_callback(trainer, k=10):
     """
-    Callback to save top 10 models based on fitness score.
+    Callback to save top k models based on fitness score.
+
+    Args:
+        trainer: The trainer object
+        k: Number of top models to keep (default: 10)
     """
-    # Initialize top10 heap on first call
-    if not hasattr(trainer, "_top10_models"):
-        trainer._top10_models = []  # min-heap of (fitness, epoch, path)
-        trainer._top10_ckpt_paths = set()
+    # Initialize topk heap on first call
+    if not hasattr(trainer, "_topk_models"):
+        trainer._topk_models = []  # min-heap of (fitness, epoch, path)
+        trainer._topk_ckpt_paths = set()
 
     # Prepare checkpoint
     ckpt = {
@@ -109,29 +115,29 @@ def save_top10_models_callback(trainer):
 
     map_score = trainer.metrics["metrics/mAP50-95(B)"]
     epoch = trainer.epoch
-    top10 = trainer._top10_models
-    ckpt_name = f"top10_epoch{epoch}_map5095_{map_score:.6f}.pt"
+    topk = trainer._topk_models
+    ckpt_name = f"top{k}_epoch{epoch}_map5095_{map_score:.6f}.pt"
     ckpt_path = trainer.wdir / ckpt_name
 
-    # If less than 10, just add
-    if len(top10) < 10:
-        heapq.heappush(top10, (map_score, epoch, str(ckpt_path)))
-        trainer._top10_ckpt_paths.add(str(ckpt_path))
+    # If less than k, just add
+    if len(topk) < k:
+        heapq.heappush(topk, (map_score, epoch, str(ckpt_path)))
+        trainer._topk_ckpt_paths.add(str(ckpt_path))
         torch.save(ckpt, ckpt_path)
     else:
-        # If current score is better than the worst in top10, replace
-        if map_score > top10[0][0]:
+        # If current score is better than the worst in topk, replace
+        if map_score > topk[0][0]:
             # Remove the worst
-            _, _, worst_path = heapq.heappop(top10)
-            if worst_path in trainer._top10_ckpt_paths:
+            _, _, worst_path = heapq.heappop(topk)
+            if worst_path in trainer._topk_ckpt_paths:
                 try:
                     os.remove(worst_path)
                 except Exception:
                     pass
-                trainer._top10_ckpt_paths.remove(worst_path)
+                trainer._topk_ckpt_paths.remove(worst_path)
             # Add the new one
-            heapq.heappush(top10, (map_score, epoch, str(ckpt_path)))
-            trainer._top10_ckpt_paths.add(str(ckpt_path))
+            heapq.heappush(topk, (map_score, epoch, str(ckpt_path)))
+            trainer._topk_ckpt_paths.add(str(ckpt_path))
             torch.save(ckpt, ckpt_path)
 
     del ckpt
