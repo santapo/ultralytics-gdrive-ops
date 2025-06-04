@@ -81,8 +81,7 @@ class Trainer:
             patience=200
         )
 
-        model.export(format="onnx", imgsz=960)
-
+        model.export(format='onnx', opset=12, dynamic= True)
 
 import heapq
 
