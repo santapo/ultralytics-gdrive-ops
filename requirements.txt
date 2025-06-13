@@ -1,4 +1,5 @@
-ultralytics
+git+https://github.com/ultralytics/ultralytics/tree/fd5be10c663d51e0054bcff2c45c62af80ae4708
+
 rclone-python
 
 onnx>=1.12.0
@@ -6,3 +7,4 @@ onnxslim>=0.1.46
 onnxruntime-gpu
 
 wandb
+comet-ml
