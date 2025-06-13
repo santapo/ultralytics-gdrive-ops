@@ -166,9 +166,9 @@ class TrainManager:
             training_proc = subprocess.Popen(
                 cmd,
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=False
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True
             )
             self.training_procs.append(training_proc)
         except Exception as e:

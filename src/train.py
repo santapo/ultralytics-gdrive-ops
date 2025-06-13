@@ -136,7 +136,7 @@ class Trainer:
             **training_args
         )
 
-        model.export(format='onnx', opset=12, dynamic= True)
+        model.export(format='onnx', opset=12, dynamic=True)
 
 
 import heapq
