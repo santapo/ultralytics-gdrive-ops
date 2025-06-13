@@ -100,7 +100,7 @@ class TrainManager:
             run_name=dataset_name,
             dataset_path=dataset_path,
             model_log_path=self.local_model_logs_path,
-            pretrained_model_path=self.local_pretrained_model_path,
+            local_pretrained_model_path=self.local_pretrained_model_path,
             gdrive_pretrained_model_path=self.gdrive_pretrained_model_path
         )
 
@@ -117,7 +117,7 @@ class TrainManager:
             run_name: str,
             dataset_path: str,
             model_log_path: str,
-            pretrained_model_path: str,
+            local_pretrained_model_path: str,
             gdrive_pretrained_model_path: str
         ):
         """
@@ -129,7 +129,7 @@ class TrainManager:
             "--run_name", run_name,
             "--data_path", dataset_path,
             "--model_log_path", model_log_path,
-            "--pretrained_model_path", pretrained_model_path,
+            "--local_pretrained_model_path", local_pretrained_model_path,
             "--gdrive_pretrained_model_path", gdrive_pretrained_model_path
         ]
 

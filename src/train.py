@@ -23,13 +23,13 @@ class Trainer:
         run_name: str,
         data_path: str,
         model_log_path: str,
-        pretrained_model_path: str,
+        local_pretrained_model_path: str,
         gdrive_pretrained_model_path: str
     ):
         self.run_name = run_name
         self.data_path = data_path
         self.model_log_path = model_log_path
-        self.pretrained_model_path = pretrained_model_path
+        self.local_pretrained_model_path = local_pretrained_model_path
         self.gdrive_pretrained_model_path = gdrive_pretrained_model_path
 
     @staticmethod
@@ -72,15 +72,18 @@ class Trainer:
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 
-    def _prepare_model(self, pretrained_model: Optional[str] = None):
+    def _prepare_model(self, pretrained_model: Optional[str]):
         """
         Prepare the model. If the pretrained model is not provided, use the default one.
         """
         if not pretrained_model:
             pretrained_model = "yolov8x.pt"
-        else:
-            pretrained_model = download_file(self.gdrive_pretrained_model_path, self.pretrained_model_path)
 
+        if not pretrained_model.startswith("yolo"):
+            source_path = os.path.join(self.gdrive_pretrained_model_path, pretrained_model)
+            pretrained_model = download_file(source_path, self.local_pretrained_model_path)
+
+        logger.info(f"Loading pretrained model from {pretrained_model}...")
         model = YOLO(pretrained_model)
         return model
 
@@ -202,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_name", type=str, required=True)
     parser.add_argument("--data_path", type=str, required=True)
     parser.add_argument("--model_log_path", type=str, required=True)
-    parser.add_argument("--pretrained_model_path", type=str, required=True)
+    parser.add_argument("--local_pretrained_model_path", type=str, required=True)
     parser.add_argument("--gdrive_pretrained_model_path", type=str, required=True)
     args = parser.parse_args()
 
@@ -210,7 +213,7 @@ if __name__ == "__main__":
         run_name=args.run_name,
         data_path=args.data_path,
         model_log_path=args.model_log_path,
-        pretrained_model_path=args.pretrained_model_path,
+        local_pretrained_model_path=args.local_pretrained_model_path,
         gdrive_pretrained_model_path=args.gdrive_pretrained_model_path
     )
     trainer.train()
