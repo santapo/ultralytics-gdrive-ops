@@ -3,6 +3,7 @@ import subprocess
 import sys
 import threading
 import time
+from typing import Optional
 
 from src.gdrive_ops import check_for_new_files, download_file, sync_folder
 from src.logger import setup_logger
@@ -11,6 +12,7 @@ from src.train import Trainer
 logger = setup_logger("ultralytics_gdrive_ops")
 
 MONITORING_INTERVAL = 10
+MAX_SIMULTANEOUS_TRAINING_PROCESSES = 2
 
 
 class TrainManager:
@@ -32,8 +34,11 @@ class TrainManager:
         self.gdrive_dataset_path = gdrive_dataset_path
         self.gdrive_model_logs_path = gdrive_model_logs_path
         self.gdrive_pretrained_model_path = gdrive_pretrained_model_path
+
         self.training_queue = []
         self.stop_sync_thread = False
+        self.inuse_gpu_ids = []
+        self.training_procs = []
 
         self._initialize()
 
@@ -58,9 +63,17 @@ class TrainManager:
                 # Check for new datasets
                 self._check_and_update_datasets()
 
+                # Check for alive training processes
+                self._check_for_alive_training_processes()
+
                 # Start new training if queue has items
                 if not self.training_queue:
                     logger.info(f"No new datasets to train. Training queue: {self.training_queue}")
+                    time.sleep(MONITORING_INTERVAL)
+                    continue
+
+                if len(self.training_procs) >= MAX_SIMULTANEOUS_TRAINING_PROCESSES:
+                    logger.info(f"Max simultaneous training processes reached. Training queue: {self.training_queue}")
                     time.sleep(MONITORING_INTERVAL)
                     continue
 
@@ -69,11 +82,11 @@ class TrainManager:
 
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt received. Exiting...")
-            self._cleanup(sync_thread, None)
+            self._cleanup(sync_thread)
             sys.exit(0)
         except Exception as e:
             logger.error(f"Error during training: {e}")
-            self._cleanup(sync_thread, None)
+            self._cleanup(sync_thread)
             sys.exit(1)
 
     def _check_and_update_datasets(self):
@@ -84,6 +97,11 @@ class TrainManager:
 
     def _process_next_dataset(self):
         """Process the next dataset in the queue and start training."""
+        gpu_id = self._get_free_gpu_id(self.inuse_gpu_ids)
+        if gpu_id is None:
+            logger.warning("No free GPU found, skipping training")
+            return
+
         new_dataset = self.training_queue.pop(0)
         logger.info(f"Prepare training for {new_dataset}...")
 
@@ -101,16 +119,19 @@ class TrainManager:
             dataset_path=dataset_path,
             model_log_path=self.local_model_logs_path,
             local_pretrained_model_path=self.local_pretrained_model_path,
-            gdrive_pretrained_model_path=self.gdrive_pretrained_model_path
+            gdrive_pretrained_model_path=self.gdrive_pretrained_model_path,
+            gpu_id=gpu_id
         )
 
-    def _cleanup(self, sync_thread: threading.Thread, training_proc: subprocess.Popen):
+    def _cleanup(self, sync_thread: threading.Thread):
         """Clean up resources before exiting."""
         if sync_thread:
             self.stop_sync_thread = True
             sync_thread.join(timeout=2)
-        if training_proc:
+        for training_proc in self.training_procs:
             training_proc.terminate()
+            self.training_procs.remove(training_proc)
+            self.inuse_gpu_ids.remove(training_proc.gpu_id)
 
     def _trigger_training_process(
             self,
@@ -118,13 +139,15 @@ class TrainManager:
             dataset_path: str,
             model_log_path: str,
             local_pretrained_model_path: str,
-            gdrive_pretrained_model_path: str
+            gdrive_pretrained_model_path: str,
+            gpu_id: int
         ):
         """
         Trigger the training process in a separate process.
         """
         # Create a command to run the training script
         cmd = [
+            "CUDA_VISIBLE_DEVICES=" + str(gpu_id),
             "python", "src/train.py",
             "--run_name", run_name,
             "--data_path", dataset_path,
@@ -132,30 +155,34 @@ class TrainManager:
             "--local_pretrained_model_path", local_pretrained_model_path,
             "--gdrive_pretrained_model_path", gdrive_pretrained_model_path
         ]
+        self.inuse_gpu_ids.append(gpu_id)
 
         env = os.environ.copy()
         if "WANDB_API_KEY" in os.environ:
             env["WANDB_API_KEY"] = os.environ["WANDB_API_KEY"]
 
         try:
-            subprocess.run(
+            training_proc = subprocess.Popen(
                 cmd,
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
+            self.training_procs.append(training_proc)
         except Exception as e:
             logger.error(f"Error during training: {e}")
 
-    def _check_for_alive_training_process_status(self, training_proc: subprocess.Popen):
+    def _check_for_alive_training_processes(self):
         """
         Check if the training process is still running.
         """
-        if training_proc.poll() is None:
-            logger.info(f"Training process is still running (PID: {training_proc.pid})")
-            return True
-        return False
+        for training_proc in self.training_procs:
+            if training_proc.poll() is None:
+                logger.info(f"Training process is still running (PID: {training_proc.pid})")
+            else:
+                self.training_procs.remove(training_proc)
+                self.inuse_gpu_ids.remove(training_proc.gpu_id)
 
     def _sync_model_logs_loop(self):
         def sync_task():
@@ -175,6 +202,27 @@ class TrainManager:
         sync_thread = threading.Thread(target=sync_task, daemon=False)
         sync_thread.start()
         return sync_thread
+
+    @staticmethod
+    def _get_free_gpu_id(inuse_gpu_ids: list[int]) -> Optional[int]:
+        """
+        Get the free GPU id.
+        """
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True
+            )
+
+            memory_usage = [int(x) for x in result.stdout.strip().split('\n')]
+            for gpu_id, usage in enumerate(memory_usage):
+                if usage <= 20 and gpu_id not in inuse_gpu_ids:
+                    return gpu_id
+
+            logger.warning("No GPU found with usage <= 20MB")
+        except Exception as e:
+            logger.error(f"Error getting free GPU: {e}")
 
 
 if __name__ == "__main__":
