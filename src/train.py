@@ -2,6 +2,7 @@ import os
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from typing import Optional
 
 import torch
 import yaml
@@ -40,13 +41,10 @@ class Trainer:
 
         return dataset_path
 
-    def train(self):
+    def _prepare_data_yaml(self, config_file: str):
         """
-        Train the model.
+        Prepare the data.yaml file. If it doesn't exist, create a default one.
         """
-        model = YOLO("yolov8x.pt")
-
-        config_file = os.path.join(self.data_path, "data.yaml")
         if not os.path.exists(config_file):
             data_yaml = {
                 "path": os.path.join(os.getcwd(), self.data_path),
@@ -64,24 +62,66 @@ class Trainer:
         with open(config_file, "w") as f:
             yaml.dump(data_yaml, f)
 
-        save_top30_models_callback = partial(save_topk_models_callback, k=30)
-        model.add_callback("on_fit_epoch_end", save_top30_models_callback)
+    def _prepare_model(self, pretrained_model: Optional[str] = None):
+        """
+        Prepare the model. If the pretrained model is not provided, use the default one.
+        """
+        if not pretrained_model:
+            pretrained_model = "yolov8x.pt"
+
+        model = YOLO(pretrained_model)
+        return model
+
+    def _prepare_training_args(self, training_config_file: Optional[str] = None):
+        """
+        Prepare the training arguments. If the training config file is not provided, use the default one.
+        """
+        default_training_args = {
+            "pretrained_model": "yolov8x.pt",
+            "epochs": 300,
+            "imgsz": 960,
+            "batch": 8,
+            "name": self.run_name,
+            "project": os.path.join(os.getcwd(), self.model_log_path),
+            "exist_ok": True,
+            "save_period": -1,
+            "fliplr": 0.8,
+            "flipud": 0.6,
+            "scale": 0.1,
+            "patience": 200
+        }
+
+        if training_config_file:
+            with open(training_config_file, "r") as f:
+                training_args = yaml.safe_load(f)
+        else:
+            training_args = default_training_args
+
+        return training_args
+
+    def train(self):
+        """
+        Train the model.
+        """
+        training_config_file = os.path.join(self.data_path, "training_config.yaml")
+        training_args = self._prepare_training_args(training_config_file)
+
+        pretrained_model = training_args.pop("pretrained_model")
+        model = self._prepare_model(pretrained_model=pretrained_model)
+
+        data_config_file = os.path.join(self.data_path, "data.yaml")
+        self._prepare_data_yaml(data_config_file)
+
+
+        save_top10_models_callback = partial(save_topk_models_callback, k=10)
+        model.add_callback("on_fit_epoch_end", save_top10_models_callback)
         model.train(
-            data=config_file,
-            epochs=300,
-            imgsz=960,
-            batch=8,
-            name=self.run_name,
-            project=os.path.join(os.getcwd(), self.model_log_path),
-            exist_ok=True,
-            save_period=-1,
-            fliplr=0.8,
-            flipud=0.6,
-            scale=0.1,
-            patience=200
+            data=data_config_file,
+            **training_args
         )
 
         model.export(format='onnx', opset=12, dynamic= True)
+
 
 import heapq
 
