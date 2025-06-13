@@ -129,8 +129,8 @@ class Trainer:
         self._prepare_data_yaml(data_config_file)
 
 
-        save_top10_models_callback = partial(save_topk_models_callback, k=10)
-        model.add_callback("on_fit_epoch_end", save_top10_models_callback)
+        save_top3_models_callback = partial(save_topk_models_callback, k=3)
+        model.add_callback("on_fit_epoch_end", save_top3_models_callback)
         model.train(
             data=data_config_file,
             **training_args
