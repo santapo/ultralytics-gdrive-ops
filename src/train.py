@@ -10,6 +10,7 @@ from ultralytics import YOLO
 from ultralytics.yolo.utils import __version__
 from ultralytics.yolo.utils.torch_utils import de_parallel
 
+from src.gdrive_ops import download_file
 from src.logger import get_logger
 from src.utils import check_dataset_structure, unzip_file
 
@@ -17,10 +18,19 @@ logger = get_logger("ultralytics_gdrive_ops")
 
 
 class Trainer:
-    def __init__(self, run_name: str, data_path: str, model_log_path: str):
+    def __init__(
+        self,
+        run_name: str,
+        data_path: str,
+        model_log_path: str,
+        pretrained_model_path: str,
+        gdrive_pretrained_model_path: str
+    ):
         self.run_name = run_name
         self.data_path = data_path
         self.model_log_path = model_log_path
+        self.pretrained_model_path = pretrained_model_path
+        self.gdrive_pretrained_model_path = gdrive_pretrained_model_path
 
     @staticmethod
     def prepare_dataset(dataset_path: str) -> str | None:
@@ -68,6 +78,8 @@ class Trainer:
         """
         if not pretrained_model:
             pretrained_model = "yolov8x.pt"
+        else:
+            pretrained_model = download_file(self.gdrive_pretrained_model_path, self.pretrained_model_path)
 
         model = YOLO(pretrained_model)
         return model
@@ -81,8 +93,6 @@ class Trainer:
             "epochs": 300,
             "imgsz": 960,
             "batch": 8,
-            "name": self.run_name,
-            "project": os.path.join(os.getcwd(), self.model_log_path),
             "exist_ok": True,
             "save_period": -1,
             "fliplr": 0.8,
@@ -96,6 +106,9 @@ class Trainer:
                 training_args = yaml.safe_load(f)
         else:
             training_args = default_training_args
+
+        training_args["project"] = os.path.join(os.getcwd(), self.model_log_path)
+        training_args["name"] = self.run_name
 
         return training_args
 
@@ -189,7 +202,15 @@ if __name__ == "__main__":
     parser.add_argument("--run_name", type=str, required=True)
     parser.add_argument("--data_path", type=str, required=True)
     parser.add_argument("--model_log_path", type=str, required=True)
+    parser.add_argument("--pretrained_model_path", type=str, required=True)
+    parser.add_argument("--gdrive_pretrained_model_path", type=str, required=True)
     args = parser.parse_args()
 
-    trainer = Trainer(args.run_name, args.data_path, args.model_log_path)
+    trainer = Trainer(
+        run_name=args.run_name,
+        data_path=args.data_path,
+        model_log_path=args.model_log_path,
+        pretrained_model_path=args.pretrained_model_path,
+        gdrive_pretrained_model_path=args.gdrive_pretrained_model_path
+    )
     trainer.train()

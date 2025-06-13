@@ -18,17 +18,20 @@ class TrainManager:
         self,
         local_dataset_path: str,
         local_model_logs_path: str,
+        local_pretrained_model_path: str,
         gdrive_dataset_path: str,
-        gdrive_model_logs_path: str
+        gdrive_model_logs_path: str,
+        gdrive_pretrained_model_path: str
     ):
         """
         Initialize the TrainManager.
         """
         self.local_dataset_path = local_dataset_path
         self.local_model_logs_path = local_model_logs_path
+        self.local_pretrained_model_path = local_pretrained_model_path
         self.gdrive_dataset_path = gdrive_dataset_path
         self.gdrive_model_logs_path = gdrive_model_logs_path
-
+        self.gdrive_pretrained_model_path = gdrive_pretrained_model_path
         self.training_queue = []
         self.stop_sync_thread = False
 
@@ -96,7 +99,9 @@ class TrainManager:
         self._trigger_training_process(
             run_name=dataset_name,
             dataset_path=dataset_path,
-            model_log_path=self.local_model_logs_path
+            model_log_path=self.local_model_logs_path,
+            pretrained_model_path=self.local_pretrained_model_path,
+            gdrive_pretrained_model_path=self.gdrive_pretrained_model_path
         )
 
     def _cleanup(self, sync_thread: threading.Thread, training_proc: subprocess.Popen):
@@ -107,7 +112,14 @@ class TrainManager:
         if training_proc:
             training_proc.terminate()
 
-    def _trigger_training_process(self, run_name: str, dataset_path: str, model_log_path: str):
+    def _trigger_training_process(
+            self,
+            run_name: str,
+            dataset_path: str,
+            model_log_path: str,
+            pretrained_model_path: str,
+            gdrive_pretrained_model_path: str
+        ):
         """
         Trigger the training process in a separate process.
         """
@@ -116,7 +128,9 @@ class TrainManager:
             "python", "src/train.py",
             "--run_name", run_name,
             "--data_path", dataset_path,
-            "--model_log_path", model_log_path
+            "--model_log_path", model_log_path,
+            "--pretrained_model_path", pretrained_model_path,
+            "--gdrive_pretrained_model_path", gdrive_pretrained_model_path
         ]
 
         env = os.environ.copy()
@@ -169,8 +183,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_dataset_path", type=str, required=True)
     parser.add_argument("--local_model_logs_path", type=str, required=True)
+    parser.add_argument("--local_pretrained_model_path", type=str, required=True)
     parser.add_argument("--gdrive_dataset_path", type=str, required=True)
     parser.add_argument("--gdrive_model_logs_path", type=str, required=True)
+    parser.add_argument("--gdrive_pretrained_model_path", type=str, required=True)
     args = parser.parse_args()
 
     # ensure that the local dataset and model logs paths exist
@@ -180,7 +196,9 @@ if __name__ == "__main__":
     train_manager = TrainManager(
         local_dataset_path=args.local_dataset_path,
         local_model_logs_path=args.local_model_logs_path,
+        local_pretrained_model_path=args.local_pretrained_model_path,
         gdrive_dataset_path=args.gdrive_dataset_path,
-        gdrive_model_logs_path=args.gdrive_model_logs_path
+        gdrive_model_logs_path=args.gdrive_model_logs_path,
+        gdrive_pretrained_model_path=args.gdrive_pretrained_model_path
     )
     train_manager.start()
