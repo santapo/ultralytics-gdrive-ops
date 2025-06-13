@@ -130,8 +130,9 @@ class TrainManager:
             sync_thread.join(timeout=2)
         for training_proc in self.training_procs:
             training_proc.terminate()
-            self.training_procs.remove(training_proc)
-            self.inuse_gpu_ids.remove(training_proc.gpu_id)
+            idx = self.training_procs.index(training_proc)
+            self.training_procs.pop(idx)
+            self.inuse_gpu_ids.pop(idx)
 
     def _trigger_training_process(
             self,
@@ -147,7 +148,6 @@ class TrainManager:
         """
         # Create a command to run the training script
         cmd = [
-            "CUDA_VISIBLE_DEVICES=" + str(gpu_id),
             "python", "src/train.py",
             "--run_name", run_name,
             "--data_path", dataset_path,
@@ -158,6 +158,7 @@ class TrainManager:
         self.inuse_gpu_ids.append(gpu_id)
 
         env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         if "WANDB_API_KEY" in os.environ:
             env["WANDB_API_KEY"] = os.environ["WANDB_API_KEY"]
 
@@ -167,7 +168,7 @@ class TrainManager:
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=False
             )
             self.training_procs.append(training_proc)
         except Exception as e:
@@ -192,7 +193,7 @@ class TrainManager:
                 except Exception as e:
                     logger.error(f"Error during auto-sync: {e}")
 
-                # wait for 60 seconds, if the sync thread is stopped, break
+                # wait for 20 minutes, if the sync thread is stopped, break
                 for _ in range(1200):
                     if self.stop_sync_thread:
                         break
