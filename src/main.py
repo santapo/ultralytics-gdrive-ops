@@ -182,8 +182,10 @@ class TrainManager:
             if training_proc.poll() is None:
                 logger.info(f"Training process is still running (PID: {training_proc.pid})")
             else:
-                self.training_procs.remove(training_proc)
-                self.inuse_gpu_ids.remove(training_proc.gpu_id)
+                logger.info(f"Training process finished (PID: {training_proc.pid})")
+                idx = self.training_procs.index(training_proc)
+                self.training_procs.pop(idx)
+                self.inuse_gpu_ids.pop(idx)
 
     def _sync_model_logs_loop(self):
         def sync_task():
