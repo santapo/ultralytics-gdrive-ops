@@ -85,9 +85,10 @@ class TrainManager:
             self._cleanup(sync_thread)
             sys.exit(0)
         except Exception as e:
+            import traceback
             logger.error(f"Error during training: {e}")
-            self._cleanup(sync_thread)
-            sys.exit(1)
+            logger.error(traceback.format_exc())
+            time.sleep(MONITORING_INTERVAL)
 
     def _check_and_update_datasets(self):
         """Check for new datasets and add them to the training queue."""
@@ -173,6 +174,8 @@ class TrainManager:
             self.training_procs.append(training_proc)
         except Exception as e:
             logger.error(f"Error during training: {e}")
+            self.inuse_gpu_ids.remove(gpu_id)
+            self.training_procs.remove(training_proc)
 
     def _check_for_alive_training_processes(self):
         """
