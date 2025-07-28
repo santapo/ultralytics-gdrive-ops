@@ -1,4 +1,4 @@
-git+https://github.com/ultralytics/ultralytics/tree/fd5be10c663d51e0054bcff2c45c62af80ae4708
+ultralytics
 
 rclone-python
 

@@ -177,3 +177,5 @@ logs/
 tmp/
 wandb/
 *.pt
+
+/envs

@@ -7,8 +7,8 @@ from typing import Optional
 import torch
 import yaml
 from ultralytics import YOLO
-from ultralytics.yolo.utils import __version__
-from ultralytics.yolo.utils.torch_utils import de_parallel
+from ultralytics.utils import __version__
+from ultralytics.utils.torch_utils import de_parallel
 
 from src.gdrive_ops import download_file
 from src.logger import get_logger
